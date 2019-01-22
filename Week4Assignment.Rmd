@@ -1,0 +1,127 @@
+
+
+#Excessive heat, tornados, and floods are the most harmful to people, while drought, hail and floods are the most economically expensive 
+
+###Synopsis
+Using the storm database from U.S. National Oceanic and Atmospheric Administration's (NOAA), I analyzed the types of weather events that create the most human harm (measured in fatalities and injuries), as well as the events that cause the greatest economic damage (measured by the cost of damage to property and crops). Although the database holds decades of data, I analyze data from 1996 onwards as this is the first year that data for all 48 standardized NOAA weather events is collected. Since 1996 excessive heat has caused the greatest number of fatalities while tornados have caused the largest number of injuries. Drought has caused the largest economic damage to crops while hail has caused the greatest economic damage to property.
+
+###Data Processing
+
+```{r}
+#Set working directory and read csv file
+setwd("~/Desktop/Coursera/Reproducible Research")
+storm_full<- read.csv("StormData.csv")
+
+#ensure data are 902,297rows x 37columns
+dim(storm_full)
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+#remove unnecessary columns to make analysis faster
+#drop all columns except for bgn_date, county, state, evtype, fatalities, injuries, prop and crop variables
+
+#install.packages("dplyr")
+library(dplyr)
+
+storm<- storm_full %>%
+    select(BGN_DATE, COUNTY, STATE, EVTYPE, FATALITIES,INJURIES,PROPDMG,PROPDMGEXP,CROPDMG,CROPDMGEXP)
+
+#the event types ('EVTYPE') are inconsistent and need to be standardized
+#for example, 'thunderstorm wind' and 'thunderstorm winds' both rank in the top 10 most common event types
+
+#create a vector of the 48 standard event types and use matching for the non-standardized entries
+
+EVTYPE2 <- c('Astronomical Low Tide','Avalanche ','Blizzard ','Coastal Flood ','Cold/Wind Chill','Debris Flow',
+             'Dense Fog','Dense Smoke','Drought','Dust Devil','Dust Storm','Excessive Heat',
+             'Extreme Cold/Wind Chill','Flash Flood','Flood', 'Frost/Freeze','Funnel Cloud',
+             'Freezing Fog ','Hail','Heat','Heavy Rain','Heavy Snow','High Surf','High Wind',
+             'Hurricane (Typhoon)','Ice Storm',
+             'Lake-Effect Snow','Lakeshore Flood', 'Lightning','Marine Hail','Marine High Wind','Marine Strong Wind',
+             'Marine Thunderstorm Wind','Rip Current','Seiche','Sleet','Storm Surge/Tide','Strong Wind',
+             'Thunderstorm Wind','Tornado','Tropical Depression','Tropical Storm','Tsunami',
+             'Volcanic Ash','Waterspout','Wildfire','Winter Storm','Winter Weather')
+
+
+#use 'amatch' function for the matching against the EVTYPE2 vector
+#install.packages("stringdist")
+library(stringdist)
+
+#amatch will match with the closest value, based in the maxDist selection
+#transform all event names to lower case so capital letters don't disrupt the matching
+
+storm$cleanname<-EVTYPE2[amatch(tolower(storm$EVTYPE), tolower(EVTYPE2), method="osa", maxDist=10)]
+```
+
+```{r results='hide', message=FALSE, warning=FALSE}
+#Now standardize the values of total crop and property damage. This is calculated using the CROPDMG/ PROPDMG
+# variables (which represent the base) and the CROPDMGEXP/ PROPDMGEXP (which represent the exponent).
+#the exponents either represent a multiplier (i.e., h=hundreds) or an exponent of a base 10 multiplier.
+
+#crop damage
+storm$cropvalue[tolower(storm$CROPDMGEXP)=='h']<- storm$CROPDMG*100
+storm$cropvalue[tolower(storm$CROPDMGEXP)=='k']<- storm$CROPDMG*1000
+storm$cropvalue[tolower(storm$CROPDMGEXP)=='m']<- storm$CROPDMG*1000000
+storm$cropvalue[tolower(storm$CROPDMGEXP)=='b']<- storm$CROPDMG*1000000000
+storm$cropvalue[(as.numeric(storm$CROPDMGEXP)>0 & as.numeric(storm$CROPDMGEXP)<10)]<- storm$CROPDMG*10^(as.numeric(storm$CROPDMGEXP))
+
+
+#property
+storm$propertyvalue[tolower(storm$PROPDMGEXP)=='h']<- storm$PROPDMG*100
+storm$propertyvalue[tolower(storm$PROPDMGEXP)=='k']<- storm$PROPDMG*1000
+storm$propertyvalue[tolower(storm$PROPDMGEXP)=='m']<- storm$PROPDMG*1000000
+storm$propertyvalue[tolower(storm$PROPDMGEXP)=='b']<- storm$PROPDMG*1000000000
+storm$propertyvalue[(as.numeric(storm$PROPDMGEXP)>0 & as.numeric(storm$PROPDMGEXP)<10)]<- storm$PROPDMG*10^(as.numeric(storm$PROPDMGEXP))
+```
+
+```{r}
+#transform date column to date format in order to subset for years since 1996
+storm$BGN_DATE<- as.Date(storm$BGN_DATE, format = "%m/%d/%Y")
+
+```
+
+
+
+###Results
+##### 1. Across the United States, which types of events are most harmful with respect to population health?
+```{r}
+#Since the full set of categories was not collected until 1996, subset data beginning that year
+
+#Excessive heat, tornados, and flash floods have the most fatalities
+subset(storm, format(storm$BGN_DATE, "%Y")>1995) %>% 
+    group_by(cleanname) %>%
+    summarise(FATALITIES = sum(FATALITIES)) %>%
+    arrange(desc(FATALITIES))
+
+#plot fatality data
+plot1<-subset(storm, format(storm$BGN_DATE, "%Y")>1995) %>% 
+    group_by(cleanname) %>%
+    summarise(FATALITIES = sum(FATALITIES)) %>%
+    arrange(desc(FATALITIES))
+
+plot1<-head(plot1,10)
+
+barplot(plot1$FATALITIES, names=plot1$cleanname, main='Deaths since 1996 by Event Type', ylab='Fatalities',
+        sub='Excessive heat, tornados, and flash floods are most deadly', col='cadetblue4', cex.names=0.6, las=2)
+```
+
+```{r}
+#tornados by far cause the most injuries, followed by floods and excessive heat
+subset(storm, format(storm$BGN_DATE, "%Y")>1995) %>% 
+    group_by(cleanname) %>%
+    summarise(INJURIES = sum(INJURIES)) %>%
+    arrange(desc(INJURIES))
+```
+
+#####2. Across the United States, which types of events have the greatest economic consequences?
+```{r}
+#drought, hail and floods have caused the most crop damage since 1996
+subset(storm, format(storm$BGN_DATE, "%Y")>1995)%>%
+    group_by(cleanname) %>%
+    summarise(cropvalue = sum(cropvalue)) %>%
+    arrange(desc(cropvalue))
+
+#hail, high wind, and flash floods have casued the most property damage
+subset(storm, format(storm$BGN_DATE, "%Y")>1995) %>%
+    group_by(cleanname) %>%
+    summarise(propertyvalue = sum(propertyvalue)) %>%
+    arrange(desc(propertyvalue))
